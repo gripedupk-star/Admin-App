@@ -24,7 +24,7 @@ import android.util.Base64;
 
 public class MainActivity extends Activity {
     private static final String API = "/wp-json/ewa/v1";
-    private static final String APP_VERSION = "0.5.6";
+    private static final String APP_VERSION = "0.5.7";
     private static final String KEY_ALIAS = "EWA_ADMIN_TOKEN_KEY";
     private SharedPreferences prefs;
     private LinearLayout root, content;
@@ -170,18 +170,18 @@ public class MainActivity extends Activity {
         Button refresh=button("Refresh Analytics"); content.addView(refresh); refresh.setOnClickListener(v->open("Analytics"));
         fetch("/admin/app/analytics",obj->{
             JSONObject j=asObject(obj); if(j==null){content.addView(card("Analytics unavailable","The server returned no analytics data."));return;}
-            addMetric("Students Created",j.opt("students_created",0));
-            addMetric("Active Members",j.opt("active_members",0));
-            addMetric("Orders",j.opt("orders",0));
+            addMetric("Students Created",j.optInt("students_created",0));
+            addMetric("Active Members",j.optInt("active_members",0));
+            addMetric("Orders",j.optInt("orders",0));
             addMetric("Revenue", "Rs. "+String.format(Locale.US,"%,.2f",j.optDouble("revenue",0)));
-            addMetric("Membership Submissions",j.opt("membership_submissions",0));
-            addMetric("Approved Memberships",j.opt("approved_memberships",0));
-            addMetric("Membership Conversion",j.opt("membership_conversion",0)+"%");
-            addMetric("Quiz Attempts",j.opt("quiz_attempts",0));
-            addMetric("Average Quiz Score",j.opt("average_quiz_score",0)+"%");
-            addMetric("Courses Completed",j.opt("courses_completed",0));
-            addMetric("Active Learners",j.opt("active_learners",0));
-            addMetric("WhatsApp Sent",j.opt("whatsapp_sent",0));
+            addMetric("Membership Submissions",j.optInt("membership_submissions",0));
+            addMetric("Approved Memberships",j.optInt("approved_memberships",0));
+            addMetric("Membership Conversion",j.optDouble("membership_conversion",0)+"%");
+            addMetric("Quiz Attempts",j.optInt("quiz_attempts",0));
+            addMetric("Average Quiz Score",j.optDouble("average_quiz_score",0)+"%");
+            addMetric("Courses Completed",j.optInt("courses_completed",0));
+            addMetric("Active Learners",j.optInt("active_learners",0));
+            addMetric("WhatsApp Sent",j.optInt("whatsapp_sent",0));
         });
     }
     private void loadNotifications(){fetch("/admin/app/notifications",obj->{JSONArray a=asArray(obj);if(a!=null)for(int i=0;i<a.length();i++){JSONObject x=a.optJSONObject(i);if(x!=null)content.addView(card(x.optString("title","Notification"),x.optString("message","")+"\nType: "+x.optString("type","-")+"\n"+x.optString("created_at","")));}});}

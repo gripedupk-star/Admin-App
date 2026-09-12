@@ -1,20 +1,15 @@
-# EWA Android Admin - GitHub APK Build
+# EWA Android Admin — v0.5.7
 
-## Repository layout
+## GitHub Actions
 
-The repository should contain the `android-admin` folder at its root. The workflow file must be at:
+1. Upload/replace the `android-admin` folder in the repository.
+2. Keep `.github/workflows/android.yml` at repository root.
+3. Open **Actions → Build Android APK → Run workflow**.
+4. Wait for the workflow to finish.
+5. Open the successful run → **Artifacts** → `ewa-android-admin-v0.5.7-debug`.
 
-`.github/workflows/build-apk.yml`
+The workflow also runs on pushes to `main` or `master`.
 
-## Build
+## v0.5.7 compile fix
 
-1. Push the complete project to GitHub.
-2. Open **Actions**.
-3. Select **Build EWA Android Admin APK**.
-4. Select **Run workflow**.
-5. Wait for the build to finish.
-6. Open the successful workflow run.
-7. Under **Artifacts**, download `ewa-android-admin-debug`.
-8. Extract the artifact and install `app-debug.apk` on an Android device.
-
-The workflow deliberately uses a pinned Gradle 8.7 installation and does not require `gradlew` or a Gradle wrapper in the repository.
+The previous build used `JSONObject.opt(key, default)`, which is not a valid Android `org.json.JSONObject` overload. Analytics now uses the correct typed accessors (`optInt` / `optDouble`).
