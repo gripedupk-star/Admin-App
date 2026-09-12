@@ -24,7 +24,7 @@ import android.util.Base64;
 
 public class MainActivity extends Activity {
     private static final String API = "/wp-json/ewa/v1";
-    private static final String APP_VERSION = "0.5.5";
+    private static final String APP_VERSION = "0.5.6";
     private static final String KEY_ALIAS = "EWA_ADMIN_TOKEN_KEY";
     private SharedPreferences prefs;
     private LinearLayout root, content;
@@ -116,8 +116,10 @@ public class MainActivity extends Activity {
     }
 
     private void loadOverview() {
-        Button refresh=button("Refresh dashboard data");content.addView(refresh);refresh.setOnClickListener(v->open("Dashboard"));
-        fetch("/admin/app/overview", obj -> { JSONObject j=asObject(obj); if(j==null)return; addMetric("Students",j.optInt("students")); addMetric("Active members",j.optInt("members")); addMetric("Pending memberships",j.optInt("pending_memberships")); addMetric("Orders",j.optInt("orders")); addMetric("WhatsApp queue",j.optInt("whatsapp_queue")); });
+        content.addView(card("Welcome back, Teacher","Your EWA control center is ready. Monitor students, memberships, orders, analytics and WhatsApp communication from one place."));
+        Button refresh=button("Refresh Dashboard"); content.addView(refresh); refresh.setOnClickListener(v->open("Dashboard"));
+        fetch("/admin/app/overview", obj -> { JSONObject j=asObject(obj); if(j==null){content.addView(card("Dashboard unavailable","No overview data was returned by WordPress."));return;}
+            addMetric("Students",j.optInt("students")); addMetric("Active Members",j.optInt("members")); addMetric("Pending Memberships",j.optInt("pending_memberships")); addMetric("Orders",j.optInt("orders")); addMetric("WhatsApp Queue",j.optInt("whatsapp_queue")); });
     }
     private void loadStudents() {
         LinearLayout row=new LinearLayout(this); EditText q=input("Search students",false); Button go=button("Search"); row.addView(q,new LinearLayout.LayoutParams(0,-2,1));row.addView(go);content.addView(row);
@@ -127,28 +129,27 @@ public class MainActivity extends Activity {
     private void loadMemberships(){fetch("/admin/app/memberships?limit=100",obj->{JSONArray a=asArray(obj);if(a!=null)for(int i=0;i<a.length();i++)addMembership(a.optJSONObject(i));});}
     private void addMembership(JSONObject x){
         if(x==null)return;
-        String st=x.optString("status","-").toUpperCase(Locale.US);
-        LinearLayout box=cardBox(x.optString("name","Student"),"Status: "+st+"\nEmail: "+x.optString("email","-")+"\nFather: "+x.optString("father_name","-")+"\nMobile: "+x.optString("mobile","-")+"\nClass: "+x.optString("class_name","-")+"\nPayment reference: "+x.optString("payment_reference","-")+"\nSubmitted: "+x.optString("payment_submitted_at","-"));
+        String st=x.optString("status","PENDING").toUpperCase(Locale.US);
+        String body="Status: "+st+"\nEmail: "+x.optString("email","-")+"\nFather: "+x.optString("father_name","-")+"\nMobile: "+x.optString("mobile",x.optString("whatsapp","-"))+"\nClass: "+x.optString("class_name","-")+"\nPayment reference: "+x.optString("payment_reference","-")+"\nSubmitted: "+x.optString("payment_submitted_at","-");
+        LinearLayout box=cardBox(x.optString("name","Student"),body);
         String proof=x.optString("payment_proof_url","");
-        if(!proof.isEmpty()){Button view=button("Open Payment Screenshot");box.addView(view);view.setOnClickListener(v->{try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(proof)));}catch(Exception e){status.setText("Unable to open payment screenshot.");}});}
-        int id=x.optInt("id");
-        if("PENDING".equals(st)||"REJECTED".equals(st)){
-            Button approve=button("Approve Membership");
-            Button reject=button("Reject Membership");
-            box.addView(approve); box.addView(reject);
-            approve.setOnClickListener(v->membershipAction(id,"approve"));
-            reject.setOnClickListener(v->membershipAction(id,"reject"));
-        } else if("ACTIVE".equals(st)){
-            Button suspend=button("Suspend Membership");
-            box.addView(suspend);
-            suspend.setOnClickListener(v->membershipAction(id,"suspend"));
-        } else if("SUSPENDED".equals(st)){
-            Button restore=button("Restore / Approve Membership");
-            Button reject=button("Reject Membership");
-            box.addView(restore); box.addView(reject);
-            restore.setOnClickListener(v->membershipAction(id,"approve"));
-            reject.setOnClickListener(v->membershipAction(id,"reject"));
+        if(!proof.isEmpty()){
+            Button view=button("Open Payment Screenshot"); box.addView(view);
+            view.setOnClickListener(v->{try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(proof)));}catch(Exception e){status.setText("Unable to open payment screenshot.");}});
         }
+        int id=x.optInt("id");
+        LinearLayout actions=new LinearLayout(this); actions.setOrientation(LinearLayout.HORIZONTAL); actions.setPadding(0,4,0,0);
+        Button approve=button("Approve"); Button reject=button("Reject"); Button suspend=button("Suspend");
+        actions.addView(approve,new LinearLayout.LayoutParams(0,-2,1));
+        actions.addView(reject,new LinearLayout.LayoutParams(0,-2,1));
+        actions.addView(suspend,new LinearLayout.LayoutParams(0,-2,1));
+        box.addView(actions);
+        approve.setEnabled(!"ACTIVE".equals(st));
+        reject.setEnabled(!"REJECTED".equals(st));
+        suspend.setEnabled("ACTIVE".equals(st));
+        approve.setOnClickListener(v->membershipAction(id,"approve"));
+        reject.setOnClickListener(v->membershipAction(id,"reject"));
+        suspend.setOnClickListener(v->membershipAction(id,"suspend"));
         content.addView(box);
     }
     private void membershipAction(int id,String action){
@@ -165,7 +166,24 @@ public class MainActivity extends Activity {
     private void loadPaymentDetails(){fetch("/admin/app/payment-details",obj->{JSONObject j=asObject(obj);if(j==null)return;LinearLayout box=cardBox("Fee & Account Details","Set the membership fee and payment accounts used by the student dashboard.");EditText fee=input("Membership fee",false),jnum=input("JazzCash number",false),jtitle=input("JazzCash account title",false),enum_=input("Easypaisa number",false),etitle=input("Easypaisa account title",false),bank=input("Bank name",false),acct=input("Bank account number",false),btitle=input("Bank account title",false),instructions=input("Payment instructions",false);instructions.setMinLines(3);fee.setText(j.optString("membership_fee",""));jnum.setText(j.optString("jazzcash_number",""));jtitle.setText(j.optString("jazzcash_title",""));enum_.setText(j.optString("easypaisa_number",""));etitle.setText(j.optString("easypaisa_title",""));bank.setText(j.optString("bank_name",""));acct.setText(j.optString("bank_account",""));btitle.setText(j.optString("bank_title",""));instructions.setText(j.optString("payment_instructions",""));for(EditText e:new EditText[]{fee,jnum,jtitle,enum_,etitle,bank,acct,btitle,instructions})box.addView(e);Button save=button("Save Fee & Account Details");box.addView(save);save.setOnClickListener(v->{try{JSONObject b=new JSONObject().put("membership_fee",fee.getText().toString()).put("jazzcash_number",jnum.getText().toString()).put("jazzcash_title",jtitle.getText().toString()).put("easypaisa_number",enum_.getText().toString()).put("easypaisa_title",etitle.getText().toString()).put("bank_name",bank.getText().toString()).put("bank_account",acct.getText().toString()).put("bank_title",btitle.getText().toString()).put("payment_instructions",instructions.getText().toString());post("/admin/app/payment-details",b,o->open("Fee & Accounts"));}catch(Exception e){status.setText("Could not save fee and account details.");}});content.addView(box);});}
     private void loadCourses(){fetch("/admin/app/courses",obj->{JSONArray a=asArray(obj);if(a!=null)for(int i=0;i<a.length();i++){JSONObject x=a.optJSONObject(i);if(x!=null)content.addView(card(x.optString("name","Course"),"Class: "+x.optString("class_name","-")+"\nLessons: "+x.optInt("lesson_count")+"\nPublished: "+(x.optInt("published")==1?"Yes":"No")));}});}
     private void loadOrders(){fetch("/admin/app/orders?limit=100",obj->{JSONArray a=asArray(obj);if(a!=null)for(int i=0;i<a.length();i++){JSONObject x=a.optJSONObject(i);if(x!=null)content.addView(card(x.optString("order_code","Order"),"Customer: "+x.optString("user_name",x.optString("name","-"))+"\nAmount: "+x.optString("amount","0")+"\nStatus: "+x.optString("status","-")));}});}
-    private void loadAnalytics(){fetch("/admin/app/analytics",obj->{JSONObject j=asObject(obj);if(j==null)return;for(String k:new String[]{"students","active_members","orders","revenue","quiz_attempts","average_quiz_score","course_completions","active_learners"})if(j.has(k))addMetric(k.replace('_',' '),j.opt(k));});}
+    private void loadAnalytics(){
+        Button refresh=button("Refresh Analytics"); content.addView(refresh); refresh.setOnClickListener(v->open("Analytics"));
+        fetch("/admin/app/analytics",obj->{
+            JSONObject j=asObject(obj); if(j==null){content.addView(card("Analytics unavailable","The server returned no analytics data."));return;}
+            addMetric("Students Created",j.opt("students_created",0));
+            addMetric("Active Members",j.opt("active_members",0));
+            addMetric("Orders",j.opt("orders",0));
+            addMetric("Revenue", "Rs. "+String.format(Locale.US,"%,.2f",j.optDouble("revenue",0)));
+            addMetric("Membership Submissions",j.opt("membership_submissions",0));
+            addMetric("Approved Memberships",j.opt("approved_memberships",0));
+            addMetric("Membership Conversion",j.opt("membership_conversion",0)+"%");
+            addMetric("Quiz Attempts",j.opt("quiz_attempts",0));
+            addMetric("Average Quiz Score",j.opt("average_quiz_score",0)+"%");
+            addMetric("Courses Completed",j.opt("courses_completed",0));
+            addMetric("Active Learners",j.opt("active_learners",0));
+            addMetric("WhatsApp Sent",j.opt("whatsapp_sent",0));
+        });
+    }
     private void loadNotifications(){fetch("/admin/app/notifications",obj->{JSONArray a=asArray(obj);if(a!=null)for(int i=0;i<a.length();i++){JSONObject x=a.optJSONObject(i);if(x!=null)content.addView(card(x.optString("title","Notification"),x.optString("message","")+"\nType: "+x.optString("type","-")+"\n"+x.optString("created_at","")));}});}
     private void loadWhatsApp(){
         Button refresh=button("Refresh Queue"); content.addView(refresh);
@@ -299,5 +317,5 @@ public class MainActivity extends Activity {
     private void writeToken(String token){try{Cipher c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.ENCRYPT_MODE,getOrCreateKey());prefs.edit().putString("token_iv",Base64.encodeToString(c.getIV(),Base64.NO_WRAP)).putString("token_ct",Base64.encodeToString(c.doFinal(token.getBytes(StandardCharsets.UTF_8)),Base64.NO_WRAP)).apply();}catch(Exception e){throw new IllegalStateException("Unable to secure administrator token.",e);}}
     private String readToken(){try{String ivs=prefs.getString("token_iv",""),cts=prefs.getString("token_ct","");if(ivs.isEmpty()||cts.isEmpty())return "";Cipher c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.DECRYPT_MODE,getOrCreateKey(),new GCMParameterSpec(128,Base64.decode(ivs,Base64.NO_WRAP)));return new String(c.doFinal(Base64.decode(cts,Base64.NO_WRAP)),StandardCharsets.UTF_8);}catch(Exception e){return "";}}
     private String cleanBase(String s){s=s.trim();while(s.endsWith("/"))s=s.substring(0,s.length()-1);return s;} private String enc(String s){try{return URLEncoder.encode(s,"UTF-8");}catch(Exception e){return s;}} private String safeError(Exception e){return e.getMessage()==null?"Unknown error":e.getMessage();}
-    private LinearLayout base(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);l.setPadding(18,18,18,18);GradientDrawable g=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{Color.rgb(10,16,38),Color.rgb(31,20,62),Color.rgb(8,39,54)});l.setBackground(g);return l;} private GradientDrawable bg(int color,int stroke){GradientDrawable g=new GradientDrawable();g.setColor(color);g.setCornerRadius(28);g.setStroke(1,stroke);return g;} private LinearLayout cardBox(String h,String body){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);l.setPadding(20,18,20,18);l.setBackground(bg(Color.argb(205,255,255,255),Color.argb(110,255,255,255)));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,0,0,14);l.setLayoutParams(lp);TextView a=title(h);l.addView(a);if(!body.isEmpty())l.addView(text(body));return l;} private TextView title(String s){TextView t=text(s);t.setTextSize(21);t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);t.setTextColor(Color.WHITE);return t;} private TextView text(String s){TextView t=new TextView(this);t.setText(s);t.setTextSize(15);t.setTextColor(Color.rgb(205,211,224));t.setPadding(0,7,0,7);return t;} private EditText input(String hint,boolean password){EditText e=new EditText(this);e.setHint(hint);e.setHintTextColor(Color.rgb(130,139,158));e.setTextColor(Color.WHITE);e.setSingleLine(!hint.toLowerCase().contains("instructions"));if(password)e.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);e.setPadding(14,10,14,10);e.setBackground(bg(Color.argb(105,255,255,255),Color.argb(150,255,255,255)));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,0,0,10);e.setLayoutParams(lp);return e;} private Button button(String s){Button b=new Button(this);b.setText(s);b.setTextColor(Color.BLACK);b.setTextSize(13);b.setAllCaps(false);b.setBackground(bg(Color.rgb(98,220,255),Color.rgb(170,120,255)));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,-2);lp.setMargins(0,4,8,8);b.setLayoutParams(lp);return b;} private LinearLayout card(String h,String body){return cardBox(h,body);} private void addMetric(String k,Object v){content.addView(card(k,String.valueOf(v)));}
+    private LinearLayout base(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);l.setPadding(18,18,18,18);GradientDrawable g=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{Color.rgb(11,18,45),Color.rgb(62,31,92),Color.rgb(8,74,91)});l.setBackground(g);return l;} private GradientDrawable bg(int color,int stroke){GradientDrawable g=new GradientDrawable();g.setColor(color);g.setCornerRadius(28);g.setStroke(1,stroke);return g;} private LinearLayout cardBox(String h,String body){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);l.setPadding(20,18,20,18);l.setBackground(bg(Color.argb(225,28,34,64),Color.argb(150,130,120,255)));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,0,0,14);l.setLayoutParams(lp);TextView a=title(h);l.addView(a);if(!body.isEmpty())l.addView(text(body));return l;} private TextView title(String s){TextView t=text(s);t.setTextSize(21);t.setTypeface(Typeface.DEFAULT,Typeface.BOLD);t.setTextColor(Color.WHITE);return t;} private TextView text(String s){TextView t=new TextView(this);t.setText(s);t.setTextSize(15);t.setTextColor(Color.rgb(232,236,248));t.setPadding(0,7,0,7);return t;} private EditText input(String hint,boolean password){EditText e=new EditText(this);e.setHint(hint);e.setHintTextColor(Color.rgb(130,139,158));e.setTextColor(Color.WHITE);e.setSingleLine(!hint.toLowerCase().contains("instructions"));if(password)e.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);e.setPadding(14,10,14,10);e.setBackground(bg(Color.argb(105,255,255,255),Color.argb(150,255,255,255)));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2);lp.setMargins(0,0,0,10);e.setLayoutParams(lp);return e;} private Button button(String s){Button b=new Button(this);b.setText(s);b.setTextColor(Color.BLACK);b.setTextSize(13);b.setAllCaps(false);b.setBackground(bg(Color.rgb(104,226,255),Color.rgb(190,105,255)));LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,-2);lp.setMargins(0,4,8,8);b.setLayoutParams(lp);return b;} private LinearLayout card(String h,String body){return cardBox(h,body);} private void addMetric(String k,Object v){content.addView(card(k,String.valueOf(v)));}
 }
